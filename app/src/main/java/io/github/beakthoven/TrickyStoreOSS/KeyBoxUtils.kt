@@ -235,6 +235,9 @@ object KeyBoxUtils {
 
         val candidate = parsed.getOrElse {
             Logger.e("Error loading keybox XML; previous snapshot retained (${it::class.java.simpleName})")
+            it.message?.let { m -> Logger.e("keybox parse failure message: $m") }
+            it.cause?.let { c -> Logger.e("keybox parse failure cause: ${c::class.java.name}: ${c.message}") }
+            Logger.e("keybox parse stack: ${it.stackTraceToString().take(4000)}")
             return false
         }
         if (isCurrent != null && !isCurrent()) return false
