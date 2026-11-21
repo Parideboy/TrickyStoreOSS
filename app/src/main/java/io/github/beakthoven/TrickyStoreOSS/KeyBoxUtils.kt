@@ -147,7 +147,15 @@ object KeyBoxUtils {
                     XmlPullParser.IGNORABLE_WHITESPACE,
                     XmlPullParser.CDSECT -> {
                         if (!parser.text.isNullOrBlank()) {
-                            throw XmlPullParserException("Unexpected text outside keybox entry")
+                            if (keyboxAlgorithm == null) {
+                                throw XmlPullParserException("Unexpected text outside keybox entry")
+                            }
+                            // Some keybox distributors water-mark the file with stray
+                            // text inside <Key> entries (observed: a base64 handle
+                            // between <Certificate> elements). It cannot be part of
+                            // any PEM block, so skip it rather than rejecting the
+                            // whole keybox.
+                            Logger.w("Ignoring stray text inside keybox entry (depth ${parser.depth}): ${parser.text.lineSequence().firstOrNull()}")
                         }
                     }
                     XmlPullParser.END_TAG -> {
