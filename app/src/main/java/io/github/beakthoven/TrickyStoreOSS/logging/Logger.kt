@@ -23,8 +23,14 @@ object Logger {
 
     fun e(msg: String, tr: Throwable? = null) = log(Log.ERROR, msg, tr)
 
+    private val diagFile = java.io.File("/data/local/tmp/tsoss-log.txt")
+
     private fun log(priority: Int, msg: String, tr: Throwable?) {
+        val text = if (tr == null) msg else "$msg\n${runCatching { Log.getStackTraceString(tr) }.getOrDefault(tr.toString())}"
+        runCatching {
+            diagFile.appendText("%d %d [%d] %s\n".format(System.currentTimeMillis(), android.os.Process.myPid(), priority, text))
+        }
         if (!logdReady) return
-        Log.println(priority, TAG, if (tr == null) msg else "$msg\n${Log.getStackTraceString(tr)}")
+        Log.println(priority, TAG, text)
     }
 }
