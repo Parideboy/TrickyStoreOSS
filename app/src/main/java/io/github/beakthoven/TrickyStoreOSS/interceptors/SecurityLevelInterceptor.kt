@@ -30,6 +30,7 @@ import io.github.beakthoven.TrickyStoreOSS.AndroidUtils
 import io.github.beakthoven.TrickyStoreOSS.CertificateGen
 import io.github.beakthoven.TrickyStoreOSS.CertificateHack
 import io.github.beakthoven.TrickyStoreOSS.CertificateUtils
+import io.github.beakthoven.TrickyStoreOSS.KeyBoxUtils
 import io.github.beakthoven.TrickyStoreOSS.PersistenceManager
 import io.github.beakthoven.TrickyStoreOSS.config.PkgConfig
 import io.github.beakthoven.TrickyStoreOSS.interceptors.InterceptorUtils.errorReply
@@ -367,7 +368,16 @@ class SecurityLevelInterceptor(private val original: IKeystoreSecurityLevel, pri
                 val entropy = data.createByteArray()
                 val hasSoftwareTarget = PkgConfig.needGenerate(callingUid)
                 val hasLeafTarget = PkgConfig.needHack(callingUid)
-                if (!hasSoftwareTarget && !hasLeafTarget) return Skip
+                Logger.i(
+                    "genKey decision uid=$callingUid gen=$hasSoftwareTarget hack=$hasLeafTarget " +
+                        "alias=${keyDescriptor.alias} " +
+                        "challenge=${params.any { it.tag == Tag.ATTESTATION_CHALLENGE }} " +
+                        "ids=${params.any { it.tag in arrayOf(Tag.ATTESTATION_ID_BRAND, Tag.ATTESTATION_ID_DEVICE, Tag.ATTESTATION_ID_PRODUCT, Tag.ATTESTATION_ID_MANUFACTURER, Tag.ATTESTATION_ID_MODEL, Tag.ATTESTATION_ID_IMEI, Tag.ATTESTATION_ID_SERIAL) }}"
+                )
+                if (!hasSoftwareTarget && !hasLeafTarget) {
+                    Logger.i("genKey SKIP (no target) uid=$callingUid alias=${keyDescriptor.alias}")
+                    return Skip
+                }
                 if (!softwarePolicySupported(params)) {
                     Logger.i("Forwarding unsupported or incomplete authorization policy uid=$callingUid")
                     return Skip
@@ -435,6 +445,11 @@ class SecurityLevelInterceptor(private val original: IKeystoreSecurityLevel, pri
                                 hasDeviceIdAttestation ||
                                 kgp.purpose.contains(KeyPurpose.ATTEST_KEY) ||
                                 attestationKeyDescriptor != null
+                        Logger.i(
+                            "genKey forge uid=$callingUid alias=${keyDescriptor.alias} " +
+                                "needsAttest=$needsForgedAttestation keyboxes=${KeyBoxUtils.hasKeyboxes()} " +
+                                "algo=${kgp.algorithm} keySize=${kgp.keySize}"
+                        )
                         if (!needsForgedAttestation) {
                             // Plain asymmetric keys without any attestation request are
                             // only used for local crypto (e.g. RSA wrapping of stored
