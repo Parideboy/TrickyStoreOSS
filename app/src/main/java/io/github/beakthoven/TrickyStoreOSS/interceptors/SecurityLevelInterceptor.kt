@@ -10,6 +10,7 @@ import android.hardware.security.keymint.KeyParameter
 import android.hardware.security.keymint.KeyParameterValue
 import android.hardware.security.keymint.KeyPurpose
 import android.hardware.security.keymint.SecurityLevel
+import io.github.beakthoven.TrickyStoreOSS.AttestProfile
 import android.hardware.security.keymint.Tag
 import android.os.IBinder
 import android.os.Parcel
