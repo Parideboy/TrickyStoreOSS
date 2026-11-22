@@ -383,6 +383,11 @@ class SecurityLevelInterceptor(private val original: IKeystoreSecurityLevel, pri
                     return Skip
                 }
                 val kgp = CertificateGen.KeyGenParameters(params)
+                val ids = { b: ByteArray? -> b?.let { String(it, Charsets.UTF_8) } ?: "-" }
+                Logger.i(
+                    "genKey identity uid=$callingUid brand=${ids(kgp.brand)} device=${ids(kgp.device)} " +
+                        "product=${ids(kgp.product)} manufacturer=${ids(kgp.manufacturer)} model=${ids(kgp.model)}"
+                )
                 val challenge = kgp.attestationChallenge
                 if (challenge != null && challenge.size > MAX_ATTESTATION_CHALLENGE_BYTES) {
                     Logger.i(
