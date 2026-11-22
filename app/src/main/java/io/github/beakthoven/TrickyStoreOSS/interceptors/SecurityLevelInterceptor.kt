@@ -383,6 +383,17 @@ class SecurityLevelInterceptor(private val original: IKeystoreSecurityLevel, pri
                     return Skip
                 }
                 val kgp = CertificateGen.KeyGenParameters(params)
+                // keystore2 fills ATTESTATION_ID_* from the real system properties, so the
+                // profile the app actually presents never reaches the attestation path.
+                // Rewrite the identity to the active profile, otherwise the record attests
+                // the physical device while Play is told something else (verdict capped).
+                AttestProfile.current()?.let { p ->
+                    p.brand?.let { kgp.brand = it.toByteArray(Charsets.UTF_8) }
+                    p.device?.let { kgp.device = it.toByteArray(Charsets.UTF_8) }
+                    p.product?.let { kgp.product = it.toByteArray(Charsets.UTF_8) }
+                    p.manufacturer?.let { kgp.manufacturer = it.toByteArray(Charsets.UTF_8) }
+                    p.model?.let { kgp.model = it.toByteArray(Charsets.UTF_8) }
+                }
                 val ids = { b: ByteArray? -> b?.let { String(it, Charsets.UTF_8) } ?: "-" }
                 Logger.i(
                     "genKey identity uid=$callingUid brand=${ids(kgp.brand)} device=${ids(kgp.device)} " +

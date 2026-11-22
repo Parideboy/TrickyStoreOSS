@@ -413,7 +413,7 @@ object CertificateGen {
         val hash = AndroidUtils.getBootHashFromProp()
         val rootOfTrust =
             DERSequence(arrayOf(DEROctetString(key), ASN1Boolean.TRUE, ASN1Enumerated(0), DEROctetString(hash)))
-        val osVersion = ASN1Integer(AndroidUtils.osVersion.toLong())
+        val osVersion = ASN1Integer((AttestProfile.current()?.osVersion ?: AndroidUtils.osVersion).toLong())
         val creationDateTime = ASN1Integer(creationTimeMs)
         val origin = ASN1Integer((params.origin ?: 0).toLong())
         val moduleHash = DEROctetString(AndroidUtils.moduleHash)
@@ -452,7 +452,7 @@ object CertificateGen {
         teeTag(704, rootOfTrust)
         teeTag(705, osVersion)
         if (AndroidUtils.patchLevel(uid) != AndroidUtils.DO_NOT_REPORT)
-            teeTag(706, ASN1Integer(AndroidUtils.patchLevel(uid).toLong()))
+            teeTag(706, ASN1Integer((AttestProfile.current()?.osPatchLevel ?: AndroidUtils.patchLevel(uid)).toLong()))
         if (AndroidUtils.vendorPatchLevelLong(uid) != AndroidUtils.DO_NOT_REPORT) {
             teeTag(718, ASN1Integer(AndroidUtils.vendorPatchLevelLong(uid).toLong()))
         }
