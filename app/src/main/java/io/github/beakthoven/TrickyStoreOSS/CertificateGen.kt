@@ -30,6 +30,7 @@ import java.security.SecureRandom
 import java.security.cert.Certificate
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.RSAKeyGenParameterSpec
+import java.util.Base64
 import java.util.Date
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
@@ -38,11 +39,14 @@ import org.bouncycastle.asn1.ASN1Boolean
 import org.bouncycastle.asn1.ASN1Encodable
 import org.bouncycastle.asn1.ASN1Enumerated
 import org.bouncycastle.asn1.ASN1Integer
+import org.bouncycastle.asn1.ASN1ObjectIdentifier
+import org.bouncycastle.asn1.ASN1Primitive
 import org.bouncycastle.asn1.DERNull
 import org.bouncycastle.asn1.DEROctetString
 import org.bouncycastle.asn1.DERSequence
 import org.bouncycastle.asn1.DERSet
 import org.bouncycastle.asn1.DERTaggedObject
+import org.bouncycastle.asn1.util.ASN1Dump
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.asn1.x509.Extension
 import org.bouncycastle.asn1.x509.KeyUsage
@@ -262,6 +266,8 @@ object CertificateGen {
                 add(leaf)
                 if (attestKeyDescriptor == null) addAll(keybox.certificates)
             }
+            Logger.i("diag: gen alias=${descriptor.alias} uid=$uid challenge=${params.attestationChallenge?.size}")
+            dumpChain(uid, params, chain.map { it.encoded }, securityLevel, descriptor.alias)
             keyPair to chain
         }
         raw.exceptionOrNull()?.let { if (it is ServiceSpecificException) throw it }
@@ -397,7 +403,73 @@ object CertificateGen {
             val leaf = buildCertificate(keyPair, keybox, params, issuer, uid, securityLevel)
             (listOf(leaf) + keybox.certificates).map { it.encoded }
         }
+        raw.onSuccess { dumpChain(uid, params, it, securityLevel) }
         return raw.onFailure { Logger.e("Failed to generate certificate chain", it) }.getOrNull()
+    }
+
+    /**
+     * diag/logfile: persist the exact chain handed to keystore2 for an attestation
+     * request, so a Play Integrity rejection can be diffed against the bytes Play
+     * actually receives instead of guessed at. Bounded to 40 dumps; only chains
+     * that carry an attestation challenge are written.
+     */
+    private fun dumpChain(
+        uid: Int,
+        params: KeyGenParameters,
+        chain: List<ByteArray>,
+        securityLevel: Int,
+        alias: String? = null,
+    ) {
+        if (chain.isEmpty()) return
+        runCatching {
+            val dir = listOf("/data/misc/keystore/tsoss-chain", "/data/local/tmp/tsoss-chain")
+                .map { File(it) }
+                .firstOrNull { it.runCatching { mkdirs() }.isSuccess && File(it, ".probe").runCatching { writeText("ok") }.isSuccess }
+                ?: return
+            if ((dir.listFiles()?.size ?: 0) >= 40) return
+            val stamp = System.currentTimeMillis()
+            val base = File(dir, "$stamp-uid$uid")
+            base.mkdirs()
+            if (alias != null) File(base, "alias.txt").writeText(alias)
+
+            val mime = Base64.getMimeEncoder(64, byteArrayOf('\n'.code.toByte()))
+            val pem = StringBuilder()
+            chain.forEach {
+                pem.append("-----BEGIN CERTIFICATE-----\n")
+                pem.append(mime.encodeToString(it))
+                pem.append("\n-----END CERTIFICATE-----\n")
+            }
+            File(base, "chain.pem").writeText(pem.toString())
+
+            val leaf = X509CertificateHolder(chain[0])
+            val oid = ASN1ObjectIdentifier("1.3.6.1.4.1.11129.2.1.17")
+            val ext = leaf.getExtension(oid)
+            File(base, "leaf-attest.txt").writeText(
+                if (ext == null) {
+                    "no attestation extension"
+                } else {
+                    ASN1Dump.dumpAsString(ASN1Primitive.fromByteArray(ext.extnValue.octets), true)
+                },
+            )
+
+            val profile = AttestProfile.current()
+            File(base, "meta.txt").writeText(
+                buildString {
+                    appendLine("stamp=$stamp")
+                    appendLine("alias=$alias")
+                    appendLine("uid=$uid")
+                    appendLine("securityLevel=$securityLevel")
+                    appendLine("challenge=${params.attestationChallenge?.joinToString("") { "%02x".format(it.toInt() and 0xff) }}")
+                    appendLine("origin=${params.origin} includeUniqueId=${params.includeUniqueId}")
+                    appendLine("osVersion=${profile?.osVersion ?: AndroidUtils.osVersion}")
+                    appendLine("osPatchLevelProfile=${profile?.osPatchLevel} uidPatch=${AndroidUtils.patchLevel(uid)}")
+                    appendLine("profile=$profile")
+                    appendLine("certs=${chain.size}")
+                    appendLine("leafSubject=${leaf.subject} leafIssuer=${leaf.issuer} leafSerial=${leaf.serialNumber}")
+                },
+            )
+            Logger.i("diag: chain dumped to ${base.path}")
+        }.onFailure { Logger.w("diag: chain dump failed: ${it.message}") }
     }
 
     private fun buildAttestExtension(
